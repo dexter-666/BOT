@@ -290,7 +290,13 @@ async def main():
     await app.run_polling()
 
 if __name__ == '__main__':
+    import nest_asyncio
+    import asyncio
+
+    # 🔧 Permite reusar el loop si ya está corriendo (Railway o entornos async)
+    nest_asyncio.apply()
+
     try:
-        asyncio.run(main())
+        asyncio.get_event_loop().run_until_complete(main())
     except (KeyboardInterrupt, SystemExit):
         logger.info("Saliendo...")
