@@ -7,6 +7,7 @@ Actualizado con:
 - Detección automática del nombre
 - Prevención de registro duplicado
 - Efecto typing y tono emocional
+- Auto-redimensionado de imagen local para Telegram
 """
 
 import asyncio
@@ -16,6 +17,8 @@ from datetime import datetime, date
 import logging
 import pytz
 import re
+from io import BytesIO
+from PIL import Image  # ✅ agregado para redimensionar
 
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.constants import ChatAction
@@ -148,12 +151,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ConversationHandler.END
 
-    # 🌿 Enviar imagen desde el repositorio local
+    # 🌿 Enviar imagen desde el repositorio local (auto-redimensionada)
     try:
-        with open("satoru-gojo-de-jjk_9830x5529_xtrafondos.com.jpg", "rb") as photo:
+        img_path = "satoru-gojo-de-jjk_9830x5529_xtrafondos.com.jpg"
+        with Image.open(img_path) as img:
+            # Si es demasiado grande, se reduce proporcionalmente
+            max_size = (1920, 1080)
+            img.thumbnail(max_size)
+            bio = BytesIO()
+            img.save(bio, format="JPEG")
+            bio.seek(0)
+
             await context.bot.send_photo(
                 chat_id=update.effective_chat.id,
-                photo=photo,
+                photo=bio,
                 caption=(
                     "🌿 ¡Hola! Mi nombre es *Slow II.*\n"
                     "Soy tu asistente emocional y personal 🕊️\n\n"
