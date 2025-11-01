@@ -81,7 +81,9 @@ def _save_users_sync(users: dict):
         json.dump(users, f, ensure_ascii=False, indent=2)
 
 # -------------------- OpenRouter integration --------------------
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+# ✅ Ahora usamos el proxy de Vercel en lugar de OpenRouter directamente
+# Cambia esta URL por la de tu proyecto en Vercel
+PROXY_URL = "https://proxy-openrouter.vercel.app/api/chat"  # ← pon aquí tu URL real
 
 async def openrouter_chat(user_id: str, user_message: str, personality: str, last_topic: str = None, history: list = None):
     system_prompt = (
@@ -101,14 +103,21 @@ async def openrouter_chat(user_id: str, user_message: str, personality: str, las
         messages.extend(history[-8:])
     messages.append({"role": "user", "content": user_message})
 
-    headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"}
-    payload = {"model": "gpt-4o-mini", "messages": messages, "max_tokens": 512, "temperature": 0.8}
+    # ⚙️ Ya no usamos el header de Authorization (el proxy se encarga)
+    headers = {"Content-Type": "application/json"}
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": messages,
+        "max_tokens": 512,
+        "temperature": 0.8
+    }
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(OPENROUTER_URL, json=payload, headers=headers)
+            resp = await client.post(PROXY_URL, json=payload, headers=headers)
             resp.raise_for_status()
             data = resp.json()
+
             content = None
             if "choices" in data and len(data["choices"]) > 0:
                 choice = data["choices"][0]
@@ -116,12 +125,14 @@ async def openrouter_chat(user_id: str, user_message: str, personality: str, las
                     content = choice["message"]["content"]
                 elif "text" in choice:
                     content = choice["text"]
+
             if not content:
-                logger.error("Formato inesperado de OpenRouter: %s", data)
+                logger.error("Formato inesperado de respuesta: %s", data)
                 return "Lo siento, tuve un problema al procesar la respuesta."
             return content.strip()
+
     except Exception as e:
-        logger.exception("Error llamando a OpenRouter: %s", e)
+        logger.exception("Error llamando al proxy: %s", e)
         return "Lo siento, no puedo conectarme con el servicio de IA ahora mismo."
 
 # -------------------- Topic extractor --------------------
