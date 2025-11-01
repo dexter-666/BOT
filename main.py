@@ -2,15 +2,11 @@
 EmoBot - Telegram emotional/educational assistant
 Adapted for Railway deployment (server-ready).
 
-Identical functionality:
-- Registration (/start)
-- User persistence (JSON)
-- OpenRouter chat connection
-- Scheduled daily follow-ups
-
-Requires environment variables:
-  TELEGRAM_TOKEN
-  OPENROUTER_API_KEY
+Actualizado con:
+- Imagen y mensaje emocional de bienvenida
+- Detección automática del nombre
+- Prevención de registro duplicado
+- Efecto typing y tono emocional
 """
 
 import asyncio
@@ -19,8 +15,10 @@ import os
 from datetime import datetime, date
 import logging
 import pytz
+import re
 
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InputFile
+from telegram.constants import ChatAction
 from telegram.ext import (
     Application, ApplicationBuilder, CommandHandler, MessageHandler, filters,
     ConversationHandler, ContextTypes
@@ -34,29 +32,22 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN") or "8238105603:AAGBIEiWVZD7EfSN8KN0
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY") or "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"
 
 if not TELEGRAM_TOKEN or not OPENROUTER_API_KEY:
-    raise EnvironmentError(
-        "❌ Falta configurar las variables TELEGRAM_TOKEN y OPENROUTER_API_KEY en Railway."
-    )
+    raise EnvironmentError("❌ Falta configurar TELEGRAM_TOKEN y OPENROUTER_API_KEY en Railway.")
 
 DATA_DIR = "data"
 USERS_FILE = os.path.join(DATA_DIR, "users.json")
 LOG_LEVEL = logging.INFO
-
-# Timezone (user's timezone)
 LOCAL_TZ = pytz.timezone("America/Lima")
-
 TIMESLOT_HOUR = {"mañana": 8, "manana": 8, "tarde": 15, "noche": 21}
-
 REGISTER_NAME, REGISTER_TIME, REGISTER_PERSONALITY = range(3)
 
 # -------------------- Logging --------------------
 logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-# -------------------- Helpers for user storage --------------------
+# -------------------- Helpers --------------------
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
-
 if not os.path.exists(USERS_FILE):
     with open(USERS_FILE, "w", encoding="utf-8") as f:
         json.dump({}, f)
@@ -81,9 +72,7 @@ def _save_users_sync(users: dict):
         json.dump(users, f, ensure_ascii=False, indent=2)
 
 # -------------------- OpenRouter integration --------------------
-# ✅ Ahora usamos el proxy de Vercel en lugar de OpenRouter directamente
-# Cambia esta URL por la de tu proyecto en Vercel
-PROXY_URL = "https://proxy-openrouter-kappa.vercel.app/"  # ← pon aquí tu URL real
+PROXY_URL = "https://proxy-openrouter-kappa.vercel.app/"
 
 async def openrouter_chat(user_id: str, user_message: str, personality: str, last_topic: str = None, history: list = None):
     system_prompt = (
@@ -103,7 +92,6 @@ async def openrouter_chat(user_id: str, user_message: str, personality: str, las
         messages.extend(history[-8:])
     messages.append({"role": "user", "content": user_message})
 
-    # ⚙️ Ya no usamos el header de Authorization (el proxy se encarga)
     headers = {"Content-Type": "application/json"}
     payload = {
         "model": "gpt-4o-mini",
@@ -125,12 +113,7 @@ async def openrouter_chat(user_id: str, user_message: str, personality: str, las
                     content = choice["message"]["content"]
                 elif "text" in choice:
                     content = choice["text"]
-
-            if not content:
-                logger.error("Formato inesperado de respuesta: %s", data)
-                return "Lo siento, tuve un problema al procesar la respuesta."
-            return content.strip()
-
+            return content.strip() if content else "Lo siento, tuve un problema al procesar la respuesta."
     except Exception as e:
         logger.exception("Error llamando al proxy: %s", e)
         return "Lo siento, no puedo conectarme con el servicio de IA ahora mismo."
@@ -146,79 +129,133 @@ def extract_topic_from_message(message: str) -> str:
                 return (first[:120]).strip()
     return message.strip()[:120]
 
+# -------------------- NEW: typing decorator --------------------
+async def typing_action(func, update, context, *args, **kwargs):
+    await context.bot.send_chat_action(chat_id=update.effective_message.chat_id, action=ChatAction.TYPING)
+    await asyncio.sleep(1.2)
+    return await func(update, context, *args, **kwargs)
+
 # -------------------- Telegram handlers --------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("¡Hola! 🌱 Soy tu asistente emocional. Para comenzar, ¿cómo te llamas?")
+    uid = str(update.effective_user.id)
+    users = await load_users()
+
+    # 🌸 Si ya está registrado, no repetir registro
+    if uid in users:
+        name = users[uid].get("name", "amigx")
+        await update.message.reply_text(f"🌸 Ya estás registrado, {name}.\nSi quieres ver tu perfil, usa /perfil 🌿")
+        return ConversationHandler.END
+
+    # 🌿 Enviar imagen y mensaje emocional
+    image_url = "https://github.com/dexter-666/BOT/raw/main/satoru-gojo-de-jjk_9830x5529_xtrafondos.com.jpg"
+    await context.bot.send_photo(
+        chat_id=update.effective_chat.id,
+        photo=image_url,
+        caption=(
+            "🌿 ¡Hola! Mi nombre es *Slow II.*\n"
+            "Soy tu asistente emocional y personal 🕊️\n\n"
+            "Estoy aquí para escucharte, acompañarte y ayudarte a crecer día a día 💬\n\n"
+            "_Desarrollado por Slow X_"
+        ),
+        parse_mode="Markdown"
+    )
+
+    # 💭 Luego preguntar automáticamente
+    await asyncio.sleep(1.2)
+    await update.message.reply_text("💭 Para comenzar, ¿cómo te llamas?")
     return REGISTER_NAME
 
 async def register_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['name'] = update.message.text.strip()
-    await update.message.reply_text("¿En qué horario sueles estar libre? (mañana / tarde / noche)")
+    text = update.message.text.strip().lower()
+
+    # 💡 Detección automática de nombre
+    name = re.sub(r"(me llamo|soy|mi nombre es)", "", text, flags=re.IGNORECASE).strip().capitalize()
+    if not name:
+        name = text.capitalize()
+
+    context.user_data["name"] = name
+
+    await typing_action(
+        lambda u, c: u.message.reply_text(
+            "¿En qué horario sueles estar libre? (mañana / tarde / noche) 🌞🌙"
+        ),
+        update, context
+    )
     return REGISTER_TIME
 
 async def register_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip().lower()
     if text not in TIMESLOT_HOUR:
-        await update.message.reply_text("Por favor escribe 'mañana', 'tarde' o 'noche'.")
+        await update.message.reply_text("Por favor escribe 'mañana', 'tarde' o 'noche'. 🌿")
         return REGISTER_TIME
-    context.user_data['time'] = text
+
+    context.user_data["time"] = text
     keyboard = [["Peter", "Wuen"]]
-    await update.message.reply_text(
-        "Elige la personalidad con la que deseas hablar:",
-        reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+    await typing_action(
+        lambda u, c: u.message.reply_text(
+            "✨ Elige la personalidad con la que deseas hablar:",
+            reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+        ),
+        update, context
     )
     return REGISTER_PERSONALITY
 
 async def register_personality(update: Update, context: ContextTypes.DEFAULT_TYPE):
     personality = update.message.text.strip()
     if personality not in ("Peter", "Wuen"):
-        await update.message.reply_text("Por favor elige 'Peter' o 'Wuen'.")
+        await update.message.reply_text("Por favor elige 'Peter' o 'Wuen'. 🌸")
         return REGISTER_PERSONALITY
 
-    context.user_data['personality'] = personality
+    context.user_data["personality"] = personality
     users = await load_users()
     uid = str(update.effective_user.id)
+
     users[uid] = {
-        'name': context.user_data['name'],
-        'time': context.user_data['time'],
-        'personality': personality,
-        'last_topic': None,
-        'history': [],
-        'last_sent_date': None
+        "name": context.user_data["name"],
+        "time": context.user_data["time"],
+        "personality": personality,
+        "last_topic": None,
+        "history": [],
+        "last_sent_date": None
     }
     await save_users(users)
 
-    await update.message.reply_text(
-        f"Perfecto, {context.user_data['name']}! 🤖 Ya estás registrado con la personalidad {personality}.",
-        reply_markup=ReplyKeyboardRemove()
+    await typing_action(
+        lambda u, c: u.message.reply_text(
+            f"Perfecto, {context.user_data['name']} 🌷 Ya estás registrado con la personalidad {personality}.",
+            reply_markup=ReplyKeyboardRemove()
+        ),
+        update, context
     )
 
-    greeting = "Hola! Me alegra conocerte. ¿Quieres contarme cómo te sientes hoy?"
+    greeting = "Hola 🌿 Me alegra conocerte. ¿Quieres contarme cómo te sientes hoy?"
     reply = await openrouter_chat(uid, greeting, personality)
     await update.message.reply_text(reply)
     return ConversationHandler.END
 
+# -------------------- Rest unchanged --------------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     uid = str(update.effective_user.id)
     users = await load_users()
     if uid not in users:
-        await update.message.reply_text("Aún no estás registrado. Envía /start para registrarte.")
+        await update.message.reply_text("Aún no estás registrado. Envía /start para registrarte 🌱")
         return
     user = users[uid]
-    personality = user.get('personality', 'Wuen')
-    history = user.get('history', [])
-    history.append({'role': 'user', 'content': text})
+    personality = user.get("personality", "Wuen")
+    history = user.get("history", [])
+    history.append({"role": "user", "content": text})
     last_topic = extract_topic_from_message(text)
-    user['last_topic'] = last_topic
-    user['history'] = history[-30:]
-    user['last_message_date'] = datetime.now(LOCAL_TZ).isoformat()
+    user["last_topic"] = last_topic
+    user["history"] = history[-30:]
+    user["last_message_date"] = datetime.now(LOCAL_TZ).isoformat()
     await save_users(users)
 
+    await typing_action(lambda u, c: None, update, context)
     reply = await openrouter_chat(uid, text, personality, last_topic, history)
     users = await load_users()
-    users[uid]['history'].append({'role': 'assistant', 'content': reply})
-    users[uid]['history'] = users[uid]['history'][-30:]
+    users[uid]["history"].append({"role": "assistant", "content": reply})
+    users[uid]["history"] = users[uid]["history"][-30:]
     await save_users(users)
     await update.message.reply_text(reply)
 
@@ -243,7 +280,7 @@ async def ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/start - Registrarte\n"
         "/perfil - Ver tu perfil\n"
         "/ayuda - Mostrar esta ayuda\n"
-        "Solo envía mensajes al chat para conversar con tu asistente."
+        "Solo envía mensajes al chat para conversar con tu asistente. 🌿"
     )
     await update.message.reply_text(txt)
 
@@ -254,23 +291,26 @@ async def send_followups(application: Application):
     current_hour = now.hour
     today_str = date.today().isoformat()
     for uid, info in users.items():
-        timeslot = info.get('time')
+        timeslot = info.get("time")
         if not timeslot:
             continue
         target_hour = TIMESLOT_HOUR.get(timeslot)
-        if current_hour != target_hour or info.get('last_sent_date') == today_str:
+        if current_hour != target_hour or info.get("last_sent_date") == today_str:
             continue
-        name = info.get('name') or ""
-        last_topic = info.get('last_topic')
-        personality = info.get('personality', 'Wuen')
-        user_msg = f"Hola {name}, recordando que hablaste sobre: {last_topic}. ¿Cómo te fue desde entonces?" if last_topic else f"Hola {name}, ¿cómo te sientes hoy?"
-        reply_text = await openrouter_chat(uid, user_msg, personality, last_topic, info.get('history', []))
+        name = info.get("name") or ""
+        last_topic = info.get("last_topic")
+        personality = info.get("personality", "Wuen")
+        user_msg = (
+            f"🌼 Hola {name}, recordando que hablaste sobre: {last_topic}. ¿Cómo te fue desde entonces?"
+            if last_topic else f"🌸 Hola {name}, ¿cómo te sientes hoy?"
+        )
+        reply_text = await openrouter_chat(uid, user_msg, personality, last_topic, info.get("history", []))
         try:
             await application.bot.send_message(chat_id=int(uid), text=reply_text)
-            users[uid]['last_sent_date'] = today_str
-            users[uid]['last_sent_time'] = now.isoformat()
-            users[uid].setdefault('history', []).append({'role': 'assistant', 'content': reply_text})
-            users[uid]['history'] = users[uid]['history'][-30:]
+            users[uid]["last_sent_date"] = today_str
+            users[uid]["last_sent_time"] = now.isoformat()
+            users[uid].setdefault("history", []).append({"role": "assistant", "content": reply_text})
+            users[uid]["history"] = users[uid]["history"][-30:]
             await save_users(users)
             logger.info("Sent follow-up to %s (%s)", uid, name)
         except Exception as e:
@@ -280,17 +320,17 @@ async def send_followups(application: Application):
 async def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     conv = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
+        entry_points=[CommandHandler("start", start)],
         states={
             REGISTER_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, register_name)],
             REGISTER_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, register_time)],
-            REGISTER_PERSONALITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, register_personality)]
+            REGISTER_PERSONALITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, register_personality)],
         },
-        fallbacks=[CommandHandler('ayuda', ayuda)]
+        fallbacks=[CommandHandler("ayuda", ayuda)],
     )
     app.add_handler(conv)
-    app.add_handler(CommandHandler('perfil', perfil))
-    app.add_handler(CommandHandler('ayuda', ayuda))
+    app.add_handler(CommandHandler("perfil", perfil))
+    app.add_handler(CommandHandler("ayuda", ayuda))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     scheduler = AsyncIOScheduler(timezone=LOCAL_TZ)
@@ -300,14 +340,13 @@ async def main():
     logger.info("🤖 Bot iniciado en Railway. Ejecutando polling...")
     await app.run_polling()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import nest_asyncio
     import asyncio
 
-    # 🔧 Permite reusar el loop si ya está corriendo (Railway o entornos async)
     nest_asyncio.apply()
-
     try:
         asyncio.get_event_loop().run_until_complete(main())
     except (KeyboardInterrupt, SystemExit):
         logger.info("Saliendo...")
+
