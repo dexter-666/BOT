@@ -3,3 +3,4 @@ httpx
 apscheduler
 pytz
 nest_asyncio
+Pillow==10.3.0
