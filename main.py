@@ -17,7 +17,7 @@ import logging
 import pytz
 import re
 
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InputFile
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.constants import ChatAction
 from telegram.ext import (
     Application, ApplicationBuilder, CommandHandler, MessageHandler, filters,
@@ -143,7 +143,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 🌸 Si ya está registrado, no repetir registro
     if uid in users:
         name = users[uid].get("name", "amigx")
-        await update.message.reply_text(f"🌸 Ya estás registrado, {name}.\nSi quieres ver tu perfil, usa /perfil 🌿")
+        await update.message.reply_text(
+            f"🌸 Ya estás registrado, {name}.\nSi quieres ver tu perfil, usa /perfil 🌿"
+        )
         return ConversationHandler.END
 
     # 🌿 Enviar imagen desde el repositorio local
@@ -160,6 +162,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ),
                 parse_mode="Markdown"
             )
+    except FileNotFoundError:
+        await update.message.reply_text(
+            "⚠️ No se encontró la imagen de bienvenida en el servidor. "
+            "Verifica que esté en la misma carpeta que main.py."
+        )
 
     # 💭 Luego preguntar automáticamente
     await asyncio.sleep(1.2)
@@ -350,4 +357,3 @@ if __name__ == "__main__":
         asyncio.get_event_loop().run_until_complete(main())
     except (KeyboardInterrupt, SystemExit):
         logger.info("Saliendo...")
-
