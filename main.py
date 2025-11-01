@@ -147,12 +147,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     # 🌿 Enviar imagen y mensaje emocional
-    await context.bot.send_photo(
-    chat_id=update.effective_chat.id,
-    photo=open("satoru-gojo-de-jjk_9830x5529_xtrafondos.com.jpg", "rb"),
-    caption=...
-)
+    image_url = (
+        "https://github.com/dexter-666/BOT/raw/main/"
+        "satoru-gojo-de-jjk_9830x5529_xtrafondos.com.jpg"
+    )
 
+    await context.bot.send_photo(
+        chat_id=update.effective_chat.id,
+        photo=image_url,
+        caption=(
             "🌿 ¡Hola! Mi nombre es *Slow II.*\n"
             "Soy tu asistente emocional y personal 🕊️\n\n"
             "Estoy aquí para escucharte, acompañarte y ayudarte a crecer día a día 💬\n\n"
