@@ -83,7 +83,7 @@ def _save_users_sync(users: dict):
 # -------------------- OpenRouter integration --------------------
 # ✅ Ahora usamos el proxy de Vercel en lugar de OpenRouter directamente
 # Cambia esta URL por la de tu proyecto en Vercel
-PROXY_URL = "https://proxy-openrouter.vercel.app/api/chat"  # ← pon aquí tu URL real
+PROXY_URL = "https://proxy-openrouter-kappa.vercel.app/"  # ← pon aquí tu URL real
 
 async def openrouter_chat(user_id: str, user_message: str, personality: str, last_topic: str = None, history: list = None):
     system_prompt = (
