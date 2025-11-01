@@ -30,8 +30,8 @@ from apscheduler.triggers.interval import IntervalTrigger
 import httpx
 
 # -------------------- Config --------------------
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN") or "8238105603:AAGBIEiWVZD7EfSN8KN06FebIxsf1qD6apk"
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY") or "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"
 
 if not TELEGRAM_TOKEN or not OPENROUTER_API_KEY:
     raise EnvironmentError(
