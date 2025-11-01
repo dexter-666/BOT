@@ -146,23 +146,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"🌸 Ya estás registrado, {name}.\nSi quieres ver tu perfil, usa /perfil 🌿")
         return ConversationHandler.END
 
-    # 🌿 Enviar imagen y mensaje emocional
-    image_url = (
-        "https://github.com/dexter-666/BOT/raw/main/"
-        "satoru-gojo-de-jjk_9830x5529_xtrafondos.com.jpg"
-    )
-
-    await context.bot.send_photo(
-        chat_id=update.effective_chat.id,
-        photo=image_url,
-        caption=(
-            "🌿 ¡Hola! Mi nombre es *Slow II.*\n"
-            "Soy tu asistente emocional y personal 🕊️\n\n"
-            "Estoy aquí para escucharte, acompañarte y ayudarte a crecer día a día 💬\n\n"
-            "_Desarrollado por Slow X_"
-        ),
-        parse_mode="Markdown"
-    )
+    # 🌿 Enviar imagen desde el repositorio local
+    try:
+        with open("satoru-gojo-de-jjk_9830x5529_xtrafondos.com.jpg", "rb") as photo:
+            await context.bot.send_photo(
+                chat_id=update.effective_chat.id,
+                photo=photo,
+                caption=(
+                    "🌿 ¡Hola! Mi nombre es *Slow II.*\n"
+                    "Soy tu asistente emocional y personal 🕊️\n\n"
+                    "Estoy aquí para escucharte, acompañarte y ayudarte a crecer día a día 💬\n\n"
+                    "_Desarrollado por Slow X_"
+                ),
+                parse_mode="Markdown"
+            )
 
     # 💭 Luego preguntar automáticamente
     await asyncio.sleep(1.2)
