@@ -31,7 +31,7 @@ import httpx
 
 # -------------------- Config --------------------
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN") or "8238105603:AAGBIEiWVZD7EfSN8KN06FebIxsf1qD6apk"
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY") or "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"
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY") or "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"
 
 if not TELEGRAM_TOKEN or not OPENROUTER_API_KEY:
     raise EnvironmentError(
